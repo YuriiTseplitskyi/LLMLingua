@@ -171,7 +171,17 @@ class PromptCompressor:
         end=None,
         condition_mode: str = "none",
         condition_pos_id: int = 0,
+        use_cache=True
     ):
+        
+        if use_cache and input_ids is None and past_key_values is None:
+            if not hasattr(self, '_ppl_cache'):
+                self._ppl_cache = {}
+            cache_key = (text, granularity, condition_mode, condition_pos_id)
+            if cache_key in self._ppl_cache:
+                cached = self._ppl_cache[cache_key]
+                return (cached[0], cached[1]) if return_kv else cached
+        
         if input_ids is None:
             tokenized_text = self.tokenizer(text, return_tensors="pt")
             input_ids = tokenized_text["input_ids"].to(self.device)
@@ -205,6 +215,14 @@ class PromptCompressor:
         elif condition_mode == "after":
             loss = loss[condition_pos_id:]
         res = loss.mean() if granularity == "sentence" else loss
+        
+        # Store in cache if using simple parameters
+        if use_cache and input_ids is None and past_key_values is None:
+            if not hasattr(self, '_ppl_cache'):
+                self._ppl_cache = {}
+            cache_key = (text, granularity, condition_mode, condition_pos_id)
+            self._ppl_cache[cache_key] = res if not return_kv else (res, past_key_values)
+        
         return (res, past_key_values) if return_kv else res
 
     def __call__(self, *args, **kwargs):
